@@ -53,7 +53,7 @@ Compiled using GNU GCC 7.4.0
 #define LOG_PATH "log.txt"
 
 //Debug Mode
-#define DEBUG 1
+#define DEBUG 0
 
 // Enumerated Types
 
