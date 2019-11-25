@@ -1021,6 +1021,372 @@ int sendMove(int sfd, struct PlayerMove* playerMove){
 	return 1;
 }
 
+/*
+ * Function:  runServer 
+ * --------------------
+ * Routine to be threaded for running server.
+ *
+ * PARAMS
+ *  _sfd: pointer to socket file descriptor
+ *
+ * RETURNS: NULL
+ */
+void* runServer(void *_sfd){
+	
+	int sfd = *((int*)_sfd);
+	int player1fd, player2fd;
+	int len = sizeof(struct sockaddr_in);
+	struct sockaddr_in player1Soc;
+	struct sockaddr_in player2Soc;
+	//Wait for players
+	player1fd = accept(sfd, (struct sockaddr*)&player1Soc, &len);
+	player2fd = accept(sfd, (struct sockaddr*)&player2Soc, &len);
+	
+	//Send seed
+	uint32_t seed1 = (uint32_t)time(0);
+	sleep(1);
+	uint32_t seed2 = (uint32_t)time(0);
+	char seedPack1[sizeof(uint32_t)];
+	char seedPack2[sizeof(uint32_t)];
+	//Send seed to player 1
+	memcpy(seedPack1, &seed1, sizeof(uint32_t));
+	memcpy(seedPack2, &seed2, sizeof(uint32_t));
+	if(write(player1fd, seedPack1, sizeof(seedPack1)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 if(write(player1fd, seedPack2, sizeof(seedPack2)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 //Send seeds to player 2
+	 if(write(player2fd, seedPack2, sizeof(seedPack2)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 if(write(player2fd, seedPack1, sizeof(seedPack1)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	
+	//In case same name
+	char* postfix = " (2)";
+	//Get player1 name
+	char player1Name[_SC_LOGIN_NAME_MAX+4];
+	//Get player2 name
+	char player2Name[_SC_LOGIN_NAME_MAX+4];
+	
+	if(read(player1fd, player1Name, _SC_LOGIN_NAME_MAX) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 if(read(player2fd, player2Name, _SC_LOGIN_NAME_MAX) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 
+	 //Add postfix to player2 if same name
+	 if(strcmp (player1Name, player2Name) == 0){
+		strcat(player2Name, postfix);
+	 }
+	 
+	 //Send each others changed names
+	 if(write(player1fd, player1Name, sizeof(player1Name)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 if(write(player1fd, player2Name, sizeof(player2Name)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 if(write(player2fd, player2Name, sizeof(player1Name)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 if(write(player2fd, player1Name, sizeof(player2Name)) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 
+	 //Tell player who goes first. 0 is first, 1 is second
+	 char order;
+	 memset(&order, 1, 1);
+	 if(write(player1fd, &order, 1) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 memset(&order, 0, 1);
+	 if(write(player2fd, &order, 1) == -1){
+		 printf("Error writing to socket!\n");
+		 exit(0);
+	 }
+	 
+	 //Size of move packet
+	 int moveSize = member_size(struct PlayerMove, moveString)
+					+ member_size(Player, shipsAlive)
+					+ member_size(Player, playerName)
+					+ member_size(struct PlayerMove, displayName)
+					+ member_size(struct PlayerMove, hit)
+					+ member_size(Vector2D, x)
+					+ member_size(Vector2D, y);
+	char packet[moveSize];
+	 while(1){
+		 //Receive from player with order 0
+		 //Player 2 receive first
+		 
+		 //read player 2 move and send
+		if(read(player2fd, packet, moveSize) == -1){
+			 printf("Error reading from socket!\n");
+			 exit(0);
+		 }
+		if(write(player1fd, packet, moveSize) == -1){
+			printf("Error writing to socket!\n");
+			exit(0);
+		}
+		
+		 
+		 //read player 1 move and send
+		if(read(player1fd, packet, moveSize) == -1){
+			 printf("Error reading from socket!\n");
+			 exit(0);
+		 }
+		if(write(player2fd, packet, moveSize) == -1){
+			printf("Error writing to socket!\n");
+			exit(0);
+		}
+		 
+	 }
+	 
+	
+	return NULL;
+}
+
+/*
+ * Function:  runOnline 
+ * --------------------
+ * Routine for online play.
+ *
+ * PARAMS
+ *  sfd: socket file descriptor
+ *
+ * RETURNS: none
+ */
+ void runOnline(int sfd){
+	 
+	 
+	 	 //Generate 2 boards for each player.
+	//Ship board and guide board.
+	Board* playerOneBoard = generateBoard();
+	Board* playerOneGuide = generateBoard();
+	Board* playerTwoBoard = generateBoard();
+	Board* playerTwoGuide = generateBoard();
+
+	 
+	 //seed player one
+	 uint32_t seed;
+	 char seed_buff[sizeof(uint32_t)] = {0};
+	 if(read(sfd, &seed_buff, sizeof(seed_buff)) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 memcpy(&seed, seed_buff, sizeof(int32_t));
+	 srand((time_t)seed);
+	 battleshipSpawnRandom(playerOneBoard);
+	 
+	 //seed player two
+	memset(seed_buff, 0, sizeof(seed_buff));
+	 if(read(sfd, &seed_buff, sizeof(seed_buff)) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 memcpy(&seed, seed_buff, sizeof(int32_t));
+	 srand((time_t)seed);
+	 battleshipSpawnRandom(playerTwoBoard);
+	
+	//Send player name
+	char playerName[_SC_LOGIN_NAME_MAX+4];
+	char enemyName[_SC_LOGIN_NAME_MAX+4];
+	getlogin_r(playerName, _SC_LOGIN_NAME_MAX);
+	if(write(sfd, playerName, _SC_LOGIN_NAME_MAX) == -1){
+		printf("Error writing to socket!\n");
+		exit(0);
+	 }
+	 
+	 //Receive new names
+	if(read(sfd, playerName, sizeof(playerName)) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	if(read(sfd, enemyName, sizeof(enemyName)) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 
+	 
+	//Setup players
+	Player player;
+	player.shipsAlive = 5;
+	strcpy(player.playerName, playerName);
+	Player enemy;
+	enemy.shipsAlive = 5;
+	strcpy(enemy.playerName, enemyName);
+	
+	
+	//Player move log
+	PlayerMoveList* logHead = NULL;
+	PlayerMoveList* logTail = NULL;
+	
+	Vector2D coord;
+	int hit;
+	
+	//Am I first?
+	char order;
+	if(read(sfd, &order, 1) == -1){
+		 printf("Error reading from socket!\n");
+		 exit(0);
+	 }
+	 
+	 
+	 //message buffer
+	 char message[_SC_LOGIN_NAME_MAX+54];
+	 char nameMessage[_SC_LOGIN_NAME_MAX+10];
+	 //If order is not 0 then enemy will make a move first
+	 if(order){
+		clearScreen();
+		printf("\n");
+		sprintf(nameMessage, "%s Turn", enemyName);
+		printCenter(nameMessage, 13);
+		printf("\n\n");
+		printBoard(playerOneBoard);
+		printf("\n\n");
+		printBoard(playerOneGuide);
+		
+		if(!receiveMove(sfd, &logHead)){
+			printf("Could not receive move!\n");
+			exit(0);
+		}
+		logTail = logHead;
+		handleMove(logHead, playerOneBoard, &player);
+		 
+	 }
+	 
+	//Gameloop
+	while(1){
+		
+		//Assume I go first. Otherwise handled in order
+		
+		//Player 1
+		clearScreen();
+		printf("\n");
+		printCenter("Your Turn", 13);
+		printf("\n\n");
+		printBoard(playerOneBoard);
+		printf("\n\n");
+		printBoard(playerOneGuide);
+		//Display Message
+		if(logTail != NULL){
+			if(logTail->displayName)
+				printf("%s: %s", logTail->player.playerName, logTail->moveString);
+			else
+				printf("%s", logTail->moveString);
+		}
+		
+		playerTurn(playerTwoBoard, playerOneGuide, &enemy, message, &coord, &hit);
+
+		
+		//Add to log
+		appendLog(&logHead, &logTail, message, &player, &coord, &hit);
+		//Send
+		sendMove(sfd, logTail);
+		
+		if(enemy.shipsAlive == 0){
+			//Player 1 wins
+			clearScreen();
+			sprintf(message, "%s has won", playerName);
+			printCenter(message, 13);
+			printf("Press ENTER to continue...");
+			clearInputBuffer(); 
+			
+			//Add to log
+			appendLog(&logHead, &logTail, message, NULL, NULL, NULL);
+			break;
+		}
+		
+		//Receive Move
+		clearScreen();
+		printf("\n");
+		sprintf(nameMessage, "%s Turn", enemyName);
+		printCenter(nameMessage, 13);
+		printf("\n\n");
+		printBoard(playerOneBoard);
+		printf("\n\n");
+		printBoard(playerOneGuide);
+		printf("%s\n", message);
+		
+		if(!receiveMove(sfd, &(logTail->next))){
+			printf("Could not receive move!\n");
+			exit(0);
+		}
+		logTail = logTail->next;
+		handleMove(logTail, playerOneBoard, &player);
+
+		
+		if(player.shipsAlive == 0){
+			//Player 2 wins
+			clearScreen();
+			sprintf(message, "%s has won", enemyName);
+			printCenter(message, 13);
+			printf("Press ENTER to continue...");
+			clearInputBuffer();
+			
+			//Add to log
+			appendLog(&logHead, &logTail, message, NULL, NULL, NULL);
+			break;
+		}
+		
+		
+	}
+	
+	if(!saveLog(logHead)){
+			fprintf(stderr, "Failed to save log!\n");
+	}
+	//Free memory
+	cleanup(playerOneBoard);
+	cleanup(playerOneGuide);
+	cleanup(playerTwoBoard);
+	cleanup(playerTwoGuide);
+	freeLog(logHead);
+ }
+ 
+ 
+ /*
+ * Function:  handleMove 
+ * --------------------
+ * Routine for handling move
+ *
+ * PARAMS
+ *  move: player move
+ *  board: player board
+ *  player: player hit
+ *
+ * RETURNS: none
+ */
+ void handleMove(struct PlayerMove* move, Board* board, Player* player){
+	 
+	 if(move->hit){
+		 
+		 int index = getIndex(move->coord.x, move->coord.y);
+		 board->cells[index].symbol = 'X';
+		 board->cells[index].ship->hp--;
+		 if(board->cells[index].ship->hp == 0){
+			//ship sunk
+			player->shipsAlive--;
+		}
+		 
+	 }
+	 
+ }
+
 
 /*
  * Function:  hostServer 
@@ -1097,10 +1463,6 @@ int hostServer(){
  * RETURNS: socket file descriptor of connection. -1 if failed
  */
 int joinServer(char* address){
-	//Get player name
-	char playerName[_SC_LOGIN_NAME_MAX];
-	getlogin_r(playerName, _SC_LOGIN_NAME_MAX);
-
 
 	struct addrinfo hints;
 	struct addrinfo *result, *r;
@@ -1112,7 +1474,7 @@ int joinServer(char* address){
 	hints.ai_socktype = SOCK_STREAM;
 
 	//Get addresses
-	s = getaddrinfo("localhost", PORT, &hints, &result);
+	s = getaddrinfo(address, PORT, &hints, &result);
 	if(s != 0){
 	   if(DEBUG)
 		   fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
@@ -1138,6 +1500,8 @@ int joinServer(char* address){
 
 	//Done with results
 	if(r == NULL){
+		if(DEBUG)
+		   fprintf(stderr, "No addresses were found!\n");
 		freeaddrinfo(result);
 		return -1;
 	}
@@ -1161,6 +1525,7 @@ int joinServer(char* address){
  * RETURNS: none
  */
 void appendLog(PlayerMoveList** head, PlayerMoveList** tail, char* message, Player* player, Vector2D* coord, int* hit){
+	//Create new player move
 	//Create new player move
 	struct PlayerMove* newMove;
 	if ((newMove = (struct PlayerMove*)malloc(sizeof(struct PlayerMove))) == NULL){

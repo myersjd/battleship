@@ -26,6 +26,7 @@ Compiled using GNU GCC 7.4.0
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <pthread.h> 
 #include <sys/ioctl.h> //For ioctl
 
 
@@ -52,7 +53,7 @@ Compiled using GNU GCC 7.4.0
 #define LOG_PATH "log.txt"
 
 //Debug Mode
-#define DEBUG 0
+#define DEBUG 1
 
 // Enumerated Types
 
@@ -176,9 +177,15 @@ int joinServer(char* address);
 
 int hostServer();
 
+void* runServer();
+
+void runOnline(int sfd);
+
 int sendMove(int sfd, struct PlayerMove* playerMove);
 
 int receiveMove(int sfd, struct PlayerMove** playerMove);
+
+void handleMove(struct PlayerMove* move, Board* board, Player* player);
 
 /*
  * Inline Function:  clearInputBuffer 
