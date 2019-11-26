@@ -2,15 +2,15 @@
 File: battleshipP3.c
 Language: C
 Name: Joshua Myers
-Date: 11/12/2019
+Date: 11/25/2019
 Course: ICSI 333 - Programming at the Hardware-Software Interface
 Semester: Fall 2019
 Lab Section: Wed 12:35PM
 UAlbany ID: 001407117
 Desc: Program runs command-line battleship using functionality from
 	  the battleship.h header file. User can play in singleplayer
-	  or multiplayer. Log will be created or overwritten in local
-	  directory with name "log.txt"
+	  or multiplayer (local/online). Log will be created or overwritten
+	  in local directory with name "log.txt"
 Compiled using GNU GCC 7.4.0
 */
 
@@ -174,10 +174,7 @@ int main(int argc, char **argv)
 		
 		//Join server
 		int joinsfd;
-		if((joinsfd = joinServer("localhost")) == -1){
-			printf("Server failure! Aborting...\n");
-			exit(0);
-		}
+		while((joinsfd = joinServer("localhost")) == -1); //Keep trying to join
 		
 		clearScreen();
 		printCenter("Waiting for another player...", 30);

@@ -3,7 +3,7 @@
 File: battleship.c
 Language: C
 Name: Joshua Myers
-Date: 11/12/2019
+Date: 11/25/2019
 Course: ICSI 333 - Programming at the Hardware-Software Interface
 Semester: Fall 2019
 Lab Section: Wed 12:35PM
